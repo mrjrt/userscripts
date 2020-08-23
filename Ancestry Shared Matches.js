@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
-// @version      0.5
+// @version      0.6
 // @description  Make Ancestry's DNA section less tedious
 // @author       Me.
 // @include      *://*.ancestry.*/discoveryui-matches/match-list/*
@@ -283,13 +283,13 @@
     Storage.prototype.getWithExpiry = getWithExpiry;
 
     // Delete all localStorage items with a set expiry date
-    function clearExpired() {
+    function clearExpired(i = 0) {
         var eachitem;
         var eachkey;
         var dummyitem;
 
         // Loop all localStorage items that has an expiry date
-        for (var i = 0; i < localStorage.length; i++){
+        if( i < localStorage.length){
             eachitem = localStorage.getItem(localStorage.key(i));
             eachkey = localStorage.key(i);
             // If value includes "expiry", call GetWithExpiry to read it and delete if expired
@@ -297,6 +297,8 @@
                 // Call function to read it and delete if expired
                 dummyitem = localStorage.getWithExpiry(eachkey);
             }
+            i++;
+            setTimeout(function(){ clearExpired(i); }, 10);
         }
     }
     Storage.prototype.clearExpired = clearExpired;
@@ -553,16 +555,45 @@ console.log("filtering");
             console.log("clearing autoScroll");
             clearInterval(autoScrollInterval);
             autoScrollInterval = null;
+            document.querySelector("autoscroll").classList.remove("running");
         } else {
             console.log("starting autoScroll");
             autoScrollInterval = setInterval(function(){
                 window.scrollTo(0,0);
                 window.scrollTo(0,999999999);
             }, autoScrollIntervalMilliseconds);
+            document.querySelector("autoscroll").classList.add("running");
         }
     };
     autoScroll.appendChild(doAutoScroll);
     actionsParent.insertBefore(autoScroll, div.nextSibling);
+
+    const addStyle = (() => {
+        const style = document.createElement('style');
+        document.head.append(style);
+        return (styleString) => style.textContent = styleString;
+    })();
+
+    addStyle(`
+@keyframes marching-ants-1 {
+  0% {
+}
+  100% {
+    background-position: 40px 0, -40px 100%, 0 -40px, 100% 40px;
+  }
+}
+
+autoscroll.running {
+  background-size: 20px 2px, 20px 2px, 2px 20px, 2px 20px;
+  padding: 1px 4px;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+  animation: marching-ants-1 2s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  background-image: linear-gradient(to right, #0079a3 50%, #fff 50%), linear-gradient(to right, #0079a3 50%, #fff 50%), linear-gradient(to bottom, #0079a3 50%, #fff 50%), linear-gradient(to bottom, #0079a3 50%, #fff 50%);
+  animation-play-state: running;
+}`);
 
     var div2 = document.createElement("span");
     div2.className = "divider";
