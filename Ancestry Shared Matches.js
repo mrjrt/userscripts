@@ -620,7 +620,7 @@ console.log("filtering");
             //console.log(mutation.target.id + mutation.type + ":" + mutation.target.innerText);
             if(mutation.target.id == "showTools"){
                 console.log("add here");
-                debugger;
+                //debugger;
             }
             toolsObserver.observe(appRoot, { attributes: true, subtree: true });
         });
