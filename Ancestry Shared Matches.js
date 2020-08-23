@@ -2,7 +2,7 @@
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
 // @version      0.6
-// @update       https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
+// @updateURL    https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @description  Make Ancestry's DNA section less tedious
 // @author       Me.
 // @include      *://*.ancestry.*/discoveryui-matches/match-list/*
