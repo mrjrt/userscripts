@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
-// @version      0.4
+// @version      0.5
 // @description  Make Ancestry's DNA section less tedious
 // @author       Me.
 // @include      *://*.ancestry.*/discoveryui-matches/match-list/*
@@ -587,7 +587,7 @@ console.log("filtering");
     var target;
     do{
         console.debug("Grabbing list");
-        target = document.querySelector('main.match-list-body');
+        target = document.querySelector('match-list');
         if(target) {
             continue;
         }
