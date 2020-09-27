@@ -15,6 +15,7 @@
     'use strict';
 
     const writeSleep = 5000;
+    const dnaInfoCacheExpiry = 15552000000;
     const zeroSMatchesCacheExpiry = 604800000;
     const hasSMatchesCacheExpiry = 2592000000;
     const bulkOperationIntervalMilliseconds = 250;
@@ -118,10 +119,10 @@
         }
 
         var d = matchElement.querySelector(".sharedDnaText a");
-        if(!d.innerText.match("Timbered DNA")){
+        if(!d.innerText.match("longest")){
             url = window.location.origin + "/discoveryui-geneticfamilyservice/api/probability/" + myGuid + "/to/" + theirGuid + "/modal";
             var dna = localStorage.getWithExpiry("ard:" + url)
-            d.innerText = "Shared DNA: " + dna.dna + " cM over " + dna.segments + " segment" + (dna.segments > 1 ? "s, longest: " + dna.longestSegment + " cM" : "") + (dna.tDNA != dna.dna ? ". Timbered DNA: " + dna.tDNA + " cM" : "");
+            d.innerText = "Shared DNA: " + dna.dna + " cM over " + dna.segments + " segment" + (dna.segments > 1 ? "s" + ", longest: " + dna.longestSegment + " cM" : "") + (dna.tDNA != dna.dna ? ". Timbered DNA: " + dna.tDNA + " cM" : "");
         }
     }
 
@@ -320,7 +321,7 @@
 
     function processRawDNA(url, dnaPayload){
         const dnaData = { tDNA: dnaPayload.html.body.match("Shared DNA: <strong>(.*?) cM</strong> across <strong>.*? segments</strong>")[1], segments: dnaPayload.html.body.match("Shared DNA: <strong>.*? cM</strong> across <strong>(.*?) segments</strong>")[1], dna: dnaPayload.html.body.match("Unweighted shared DNA: <strong>(.*?) cM</strong>")[1], longestSegment: dnaPayload.html.body.match("Longest segment: <strong>(.*?) cM</strong>")[1] };
-        localStorage.setWithExpiry("ard:" + url, dnaData, zeroSMatchesCacheExpiry + zeroSMatchesCacheExpiry * Math.random());
+        localStorage.setWithExpiry("ard:" + url, dnaData, dnaInfoCacheExpiry + dnaInfoCacheExpiry * Math.random());
     }
 
 // Localstorage with expiry taken from https://www.sohamkamani.com/blog/javascript-localstorage-with-ttl-expiry/
