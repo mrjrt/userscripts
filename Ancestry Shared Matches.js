@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
-// @version      0.6
+// @version      0.9
 // @updateURL    https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @description  Make Ancestry's DNA section less tedious
 // @author       Me.
 // @include      *://*.ancestry.*/discoveryui-matches/match-list/*
-// @include      *://*.ancestry.*/discoveryui-matches/compare/*
+// @include      *://*.ancestry.*/discoveryui-matches/compare/*/sharedmatches
+// @include      file://*AncestryDNA® Matches*
 // @grant        none
 // ==/UserScript==
 
@@ -19,7 +20,7 @@
     const bulkOperationIntervalMilliseconds = 250;
     const autoScrollIntervalMilliseconds = 5000;
     const initalFixupTimeout = 500;
-    const fixupTimeout = 360000;
+    const fixupTimeout = 60000;//360000;
 
     var myGuid = "<UNKNOWN>";
     var rx = /(match-list|compare)\/(.+?)(\/|$)/;
@@ -28,9 +29,10 @@
     const urlParams = new URLSearchParams(window.location.search);
     window.smatchmin = urlParams.get('smatchmin') ?? 1;
     window.smatchmax = urlParams.get('smatchmax');
+    window.autoscroll = urlParams.get('autoscroll') ?? false;
     window.removesmatches = urlParams.get('removesmatches') ?? false;
 
-    console.log(smatchmin + ", " +smatchmax + ", " + window.removesmatches);
+    console.log(smatchmin + ", " + smatchmax + ", " + window.removesmatches + ", " + window.autoscroll);
 
     async function getGroups(){
         var backoff = 100;
@@ -61,6 +63,13 @@
 
     function fixup(){
        console.debug("firing?", );
+    if(document.querySelectorAll(".noMatchDisplay").length > 0) {
+        console.log("Crappy Ancestry engineering means we need to restart.");
+        setTimeout(function(){
+                window.location.search = window.location.search.concat(window.autoscroll ? "&autoscroll=true" : "");
+            },
+            5000);
+        }
         var matches = document.querySelectorAll("match-list match-entry");
         matches.forEach(function(i){processMatch(i, visual)});
 //        matches.forEach(function(i){processMatch(i, star)});
@@ -88,7 +97,8 @@
     }
 
     async function visual(url, matchElement, myGuid, theirGuid, test) {
-        await getMatches(url, myGuid, theirGuid);
+        await getMatches(url);
+        await getRawDNA(url, myGuid, theirGuid);
 
         var hideSharedMatches = (window.smatchmin != null && (localStorage.getWithExpiry("asm:" + url) < window.smatchmin)) || (window.smatchmax != null && (localStorage.getWithExpiry("asm:" + url) > window.smatchmax));
         var sharedMatchesStyle = hideSharedMatches ? "style=\"color:#BBB\" " : "";
@@ -106,6 +116,23 @@
                 parent.appendChild(cell);
             }
         }
+
+        var d = matchElement.querySelector(".sharedDnaText a");
+        if(!d.innerText.match("Timbered DNA")){
+            url = window.location.origin + "/discoveryui-geneticfamilyservice/api/probability/" + myGuid + "/to/" + theirGuid + "/modal";
+            var dna = localStorage.getWithExpiry("ard:" + url)
+            d.innerText = "Shared DNA: " + dna.dna + " cM over " + dna.segments + " segment" + (dna.segments > 1 ? "s, longest: " + dna.longestSegment + " cM" : "") + (dna.tDNA != dna.dna ? ". Timbered DNA: " + dna.tDNA + " cM" : "");
+        }
+    }
+
+    async function filterTags(url, matchElement, myGuid, theirGuid, test) {
+        var hide = (window.hideTags != null && matchElement.querySelectorAll(".additionalInfoCol .indicatorGroup[title=\"" + window.tagGroups[window.hideTags[0]].label + "\"]").length > 0);
+        var e = matchElement.closest("MATCH-ENTRY");
+        if(hide){
+            e.style.display = "none";
+        } else {
+            e.style.display = "block";
+        }
     }
 
     async function filterSMatches(url, matchElement, myGuid, theirGuid, test) {
@@ -120,7 +147,7 @@
     }
 
     async function tagCore(url, matchElement, myGuid, theirGuid, test, mode, groupText, groupId) {
-        await getMatches(url, myGuid, theirGuid);
+      //  await getMatches(url, myGuid, theirGuid);
 
         var shouldTag = await test(url, window.smatchmin, window.smatchmax);
         if(shouldTag && matchElement.style.display != "none"){
@@ -135,6 +162,7 @@
             var actualMode = mode != "toggle" ? mode : (has == false ? "set" : "clear" );
             if((actualMode == "set" && !has ) || ( actualMode == "clear" && has )) {
                 console.log("BulkAction: " + mode + ":" + has + " - " + theirGuid);
+                await sleep(bulkOperationIntervalMilliseconds);
 
                 var xmlhttp;
                 var endpoint = groupText == "Star"
@@ -151,6 +179,8 @@
                     : actualMode == "set"
                         ? `{"headers":{"normalizedNames":{},"lazyUpdate":null,"lazyInit":null,"headers":{}}}`
                         : null;
+                var backoff = 100;
+                var attempt = 1;
                 do{
                     xmlhttp = new XMLHttpRequest();
                     xmlhttp.open(method, endpoint, true);
@@ -162,7 +192,7 @@
                                 if(null == parent.querySelector(groupText == "Star"
                                                                 ? ".iconStar"
                                                                 : ".indicatorGroup[title=\"" + groupText + "\"]")) {
-                                    console.log("Successfully tagged as " + groupText);
+                                    console.log(theirGuid + " successfully tagged as " + groupText);
                                     var newIcon = document.createElement("span");
                                     newIcon.className = groupText == "Star"
                                         ? "icon iconStar"
@@ -184,20 +214,48 @@
                                     qs.remove();
                                 }
                             }
-                        } else {
-                            console.log("Unsuccessfully starred :( " + xmlhttp.status);
+                        } else if(this.status >= 400 && this.status < 600 ){
+                            console.log(theirGuid + " unsuccessfully starred :( " + xmlhttp.status);
                         }
                     };
 
                     xmlhttp.send(payload);
+                    var start = Date.now();
                     do{
-                        console.debug("sleeping: " + theirGuid + ", state:" + xmlhttp.readystate);
+                        console.debug(theirGuid + " sleeping, state:" + xmlhttp.readyState);
                         await sleep(writeSleep);
-                    }while(xmlhttp.readystate != 4 && xmlhttp.readystate != undefined);
-                    console.debug("status: " + xmlhttp.status);
-                }while(xmlhttp.status != 200 && xmlhttp.status != undefined);
+                    }while(xmlhttp.readyState != 4 && ((Date.now() - start) < 180000));
+                    console.debug(theirGuid + " attempt " + attempt++ + ") status: " + xmlhttp.status + ", rs: " + xmlhttp.readyState);
+                }while(xmlhttp.status != 200);
             }
         }
+    }
+
+    async function getRawDNA(url, myGuid, theirGuid){
+        url = window.location.origin + "/discoveryui-geneticfamilyservice/api/probability/" + myGuid + "/to/" + theirGuid + "/modal";
+        var backoff = 100;
+        do {
+            //console.log("val:" + localStorage.getWithExpiry("asm:" + url));
+            //If the raw DNA figure is not in cache, grab and and shove it in
+            if(null == localStorage.getWithExpiry("ard:" + url)){
+                await sleep(backoff);
+
+                var xmlhttp = new XMLHttpRequest();
+                xmlhttp.onreadystatechange = function() {
+                    if (this.readyState == 4 && this.status == 200) {
+                        var res = JSON.parse(this.responseText);
+                        processRawDNA(url, res);
+                    }
+                };
+                xmlhttp.open("GET", url, true);
+                xmlhttp.send();
+            }
+
+            if(null != localStorage.getWithExpiry("ard:" + url)){
+                return;
+            }
+            backoff = backoff + Math.floor(Math.random() * backoff);
+        } while(!localStorage.getWithExpiry("ard:" + url));
     }
 
     async function getMatches(url){
@@ -230,6 +288,16 @@
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    function debounce(fun, mil){
+        var timer;
+        return function(){
+            clearTimeout(timer);
+            timer = setTimeout(function(){
+                fun();
+            }, mil);
+        };
+    }
+
     function getMyGuid(url){
         var rx = /compare\/(.*)\/with/;
         var res = rx.exec(url);
@@ -248,6 +316,11 @@
         localStorage.setWithExpiry("asm:" + url, matchData.matchCount, matchData.matchCount == 0
                                    ? (zeroSMatchesCacheExpiry + zeroSMatchesCacheExpiry * Math.random())
                                    : (hasSMatchesCacheExpiry + hasSMatchesCacheExpiry * Math.random()));
+    }
+
+    function processRawDNA(url, dnaPayload){
+        const dnaData = { tDNA: dnaPayload.html.body.match("Shared DNA: <strong>(.*?) cM</strong> across <strong>.*? segments</strong>")[1], segments: dnaPayload.html.body.match("Shared DNA: <strong>.*? cM</strong> across <strong>(.*?) segments</strong>")[1], dna: dnaPayload.html.body.match("Unweighted shared DNA: <strong>(.*?) cM</strong>")[1], longestSegment: dnaPayload.html.body.match("Longest segment: <strong>(.*?) cM</strong>")[1] };
+        localStorage.setWithExpiry("ard:" + url, dnaData, zeroSMatchesCacheExpiry + zeroSMatchesCacheExpiry * Math.random());
     }
 
 // Localstorage with expiry taken from https://www.sohamkamani.com/blog/javascript-localstorage-with-ttl-expiry/
@@ -299,7 +372,7 @@
                 dummyitem = localStorage.getWithExpiry(eachkey);
             }
             i++;
-            setTimeout(function(){ clearExpired(i); }, 10);
+            setTimeout(function(){ clearExpired(i); }, 100);
         }
     }
     Storage.prototype.clearExpired = clearExpired;
@@ -334,6 +407,10 @@
 	justify-content: space-between;
 	align-items: center;
 }
+
+#filter_nottags_options .calloutPointer{
+    left: calc(20% - 16px)
+}
 `;
 
         var styleSheet = document.createElement("style")
@@ -361,7 +438,7 @@
         filterElement.classList.toggle("iconArrowDownAfter");
     }
 
-    newFilterButton.onclick = toggleSMatchCallout;
+    newFilterButton.onclick = debounce(toggleSMatchCallout, 250);
     newFilter.appendChild(newFilterButton);
 
     window.resetSMatch = function(){
@@ -410,6 +487,112 @@ console.log("filtering");
 
     newFilter.appendChild(newFilterOptions);
 
+    // Add the filter options
+    var newTagFilter = document.createElement("span");
+
+    var newTagFilterButton = document.createElement("button");
+    newTagFilterButton.type="button";
+    newTagFilterButton.className = "ancBtn ancBtnRnd filter iconAfter outline ng-star-inserted iconArrowDownAfter";
+    newTagFilterButton.id = "filter_nottags";
+    newTagFilterButton.innerText = "Not Groups";
+
+    function toggleNotTagsCallout(){
+        var filterElement = document.getElementById("filter_nottags");
+        var optionsElement = document.getElementById("filter_nottags_options");
+        optionsElement.style.display = optionsElement.style.display == "none" ? "block" : "none";
+        filterElement.classList.toggle("selected");
+        filterElement.classList.toggle("iconArrowUpAfter");
+        filterElement.classList.toggle("iconArrowDownAfter");
+    }
+
+    newTagFilterButton.onclick = debounce(toggleNotTagsCallout, 250);
+    newTagFilter.appendChild(newTagFilterButton);
+
+    window.resetNotTags = function(){
+        window.hideTags = null;
+        var matches = document.querySelectorAll("match-list match-entry");
+        matches.forEach(function(i){if(i.style.display == "none") { i.style.display = "block"; } });
+    }
+
+    window.filterNotTags = function(){
+console.log("filtering");
+        window.hideTags = Object.entries(document.querySelectorAll("#filter_nottags_options .calloutMenuChecked")).map(function(i){return i[1].id.replace("tagNotFilterGroup","")});
+        //window.smatchmin = parseInt(document.getElementById("smatchmin").value, 10);
+        //window.smatchmax = parseInt(document.getElementById("smatchmax").value, 10);
+        var matches = document.querySelectorAll("match-list match-entry");
+        matches.forEach(function(i){processMatch(i, filterTags, always, null)});
+        toggleNotTagsCallout();
+    }
+
+    var newTagFilterOptions = document.createElement("div");
+    newTagFilterOptions.id = "filter_nottags_options";
+    newTagFilterOptions.style="position: absolute; display: none; width: 300px";
+    newTagFilterOptions.innerHTML = `
+<div tabindex="-1" class="calloutContent" style="max-height:750px;position:absolute;width:100%;top:10px;left:-30%;">
+    <ul class="calloutMenu" style="max-height:600px;overflow-y:scroll">
+        <li><button onclick="handleNotTagsFilter(this)" id="tagNotFilterGroupStar" groupText="Star" groupId="-1" type="button" class="tagGroup bold iconAfter link"><span class="icon iconStar"></span> Star <div class="textxsml normal sand4" style="padding-left:24px">Filter out starred matches</div></button></li>
+    </ul>
+    <!---->
+    <!---->
+    <div class="controls" style="">
+        <button id="resetNotTags" type="button" class="link resetFilters" style="float:left;position:relative;margin:0.5em 0em;top:0.5em;" onclick="resetNotTags()">Reset</button>
+        <input id="applyNotTags" type="submit" class="ancBtn" value="Apply" style="float:right;position:relative;margin:0.5em 0em;top:0.25em;" onclick="filterNotTags()">
+    </div>
+</div>
+<div class="calloutPointer willTransform style=" transform:="" translate(0px);"="">
+<div class="calloutPointerShadow">
+</div>
+</div>
+`;
+    newTagFilter.appendChild(newTagFilterOptions);
+
+    // Add in the groups
+    await getGroups();
+
+    Object.entries(window.tagGroups).map(function(i){return i[1]}).sort(function(a,b){return a.label < b.label;}).forEach(function(i){
+        var groupButtonItem = document.createElement("li");
+        var groupButton = document.createElement("button");
+        groupButton.id = "tagNotFilterGroup" + i.tagId;
+        groupButton.groupId = i.tagId;
+        groupButton.groupText = i.label;
+        groupButton.type = "button";
+        groupButton.className = "tagGroup calloutMenuUnchecked iconAfter link";
+        groupButton.onclick=function(){handleNotTagsFilter(groupButton)};
+
+        var indicatorGroup = document.createElement("span");
+        indicatorGroup.className = "indicatorGroup";
+        indicatorGroup.style.backgroundColor = i.color;
+        groupButton.appendChild(indicatorGroup);
+
+        var text = document.createTextNode(i.label);
+        groupButton.appendChild(text);
+
+        var groupButtonText = document.createElement("div");
+        groupButtonText.className = "textxsml normal sand4";
+        groupButtonText.style.paddingLeft = "24px";
+        groupButtonText.innerText = "Filter out matches in this group";
+        groupButton.appendChild(groupButtonText);
+        groupButtonItem.appendChild(groupButton);
+
+        newTagFilterOptions.querySelector(".calloutMenu").appendChild(groupButtonItem);
+    });
+
+    window.handleNotTagsFilter = function(e){
+        var matches = document.querySelectorAll("#filter_nottags_options .tagGroup");
+        var wasSet = e.classList.contains("calloutMenuChecked");
+        matches.forEach(async function(i){
+            i.classList.remove("calloutMenuChecked");
+            i.classList.remove("iconAfterCheck");
+            i.classList.add("calloutMenuUnchecked");
+        });
+        if(!wasSet){
+           e.classList.remove("calloutMenuUnchecked");
+           e.classList.add("calloutMenuChecked");
+           e.classList.add("iconAfterCheck");
+        }
+    }
+
+    const actionsStart = Date.now();
     var actionsParent;
     do {
         actionsParent = document.querySelector(".sortAndSearchGroup");
@@ -417,23 +600,25 @@ console.log("filtering");
             console.log("Looking for filters...");
             await sleep(500);
         }
-    } while(!actionsParent);
-    console.log("Filters!");
+    } while(!actionsParent && Date.now() - actionsStart < 10000);
+    console.log("Actions!");
+    if(Date.now() - actionsStart >= 10000) {
+        window.location.search = window.location.search.concat(window.autoscroll ? "&autoscroll=true" : "");
+    }
 
     var bulkMatchesInterval;
 
     var bulkMatches = document.createElement("bulkmatches");
     bulkMatches.style="position: relative;";
 
-    window.doBulkOperation = function(element){
+    window.doBulkOperation = async function(element){
         if(!element.classList.contains("disabled")) {
             var mode = document.getElementById("bulkMatchesCallout").querySelector(".bulkMode.calloutMenuChecked").id.replace("bulkMode", "").toLowerCase();
             var matches = document.querySelectorAll("match-list match-entry");
             var group = document.getElementById("bulkMatchesCallout").querySelector(".bulkGroup.calloutMenuChecked");
-            matches.forEach(async function(i){
+            for(const i of matches){
                 processMatch(i, tagCore, always, mode, group.groupText ?? group.getAttribute("groupText"), group.groupId ?? group.getAttribute("groupId"));
-                await sleep(bulkOperationIntervalMilliseconds);
-            });
+            };
             document.getElementById('bulkMatchesCallout').classList.toggle("open");
         }
     };
@@ -500,7 +685,7 @@ console.log("filtering");
         groupButton.groupText = i.label;
         groupButton.type = "button";
         groupButton.className = "bulkGroup calloutMenuUnchecked iconAfter link";
-        groupButton.onclick=function(){handleBulkMode(groupButton)};
+        groupButton.onclick=debounce(function(){handleBulkMode(groupButton)}, 250);
 
         var indicatorGroup = document.createElement("span");
         indicatorGroup.className = "indicatorGroup";
@@ -551,21 +736,8 @@ console.log("filtering");
     doAutoScroll.type = "button";
     doAutoScroll.className = "link";
     doAutoScroll.innerText = "AutoScroll";
-    doAutoScroll.onclick = function(){
-        if(autoScrollInterval) {
-            console.log("clearing autoScroll");
-            clearInterval(autoScrollInterval);
-            autoScrollInterval = null;
-            document.querySelector("autoscroll").classList.remove("running");
-        } else {
-            console.log("starting autoScroll");
-            autoScrollInterval = setInterval(function(){
-                window.scrollTo(0,0);
-                window.scrollTo(0,999999999);
-            }, autoScrollIntervalMilliseconds);
-            document.querySelector("autoscroll").classList.add("running");
-        }
-    };
+    doAutoScroll.onclick = debounce(handleAutoScroll, 250);
+
     autoScroll.appendChild(doAutoScroll);
     actionsParent.insertBefore(autoScroll, div.nextSibling);
 
@@ -574,6 +746,24 @@ console.log("filtering");
         document.head.append(style);
         return (styleString) => style.textContent = styleString;
     })();
+
+    function handleAutoScroll(){
+        if(autoScrollInterval) {
+            console.log("clearing autoScroll");
+            clearInterval(autoScrollInterval);
+            autoScrollInterval = null;
+            document.querySelector("autoscroll").classList.remove("running");
+            window.autoscroll = false;
+        } else {
+            console.log("starting autoScroll");
+            autoScrollInterval = setInterval(function(){
+                window.scrollTo(0,0);
+                window.scrollTo(0,999999999);
+            }, autoScrollIntervalMilliseconds);
+            document.querySelector("autoscroll").classList.add("running");
+            window.autoscroll = true;
+        }
+    };
 
     addStyle(`
 @keyframes marching-ants-1 {
@@ -601,6 +791,7 @@ autoscroll.running {
     div2.innerText = "|";
     actionsParent.insertBefore(div2, autoScroll.nextSibling);
 
+    const filterStart = Date.now();
     var filters;
     do {
         filters = document.querySelector(".filtersContainer .filters");
@@ -608,11 +799,19 @@ autoscroll.running {
             console.debug("No filters. Waiting...");
             await sleep(500);
         }
-    }while(!filters);
+    }while(!filters && Date.now() - filterStart < 10000);
+    if(Date.now() - filterStart >= 10000) {
+        window.location.search = window.location.search.concat(window.autoscroll ? "&autoscroll=true" : "");
+    }
 
     console.debug("Filters!");
 
+    if(window.autoscroll) {
+        handleAutoScroll();
+    }
+
     var resetFilters = document.querySelector(".filtersContainer .filters a");
+    filters.insertBefore(newTagFilter, resetFilters);
     filters.insertBefore(newFilter, resetFilters);
 
     // select the target node
@@ -632,7 +831,9 @@ autoscroll.running {
         mutations.forEach(async function(mutation) {
             if(mutation.target.nodeName == "MATCH-ENTRY"){
                // console.debug(mutation.type + ":" + mutation.target.innerText);
-                await processMatch(mutation.target, visual);
+                await processMatch(mutation.target, visual)
+                  //  .then(processMatch(mutation.target, filterSMatches));
+                    .then(processMatch(mutation.target, filterTags));
                 //    .then(processMatch(mutation.target, star));
             }
         });
