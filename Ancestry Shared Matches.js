@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
-// @version      0.9
+// @version      0.11
 // @updateURL    https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @description  Make Ancestry's DNA section less tedious
 // @author       Me.
@@ -15,11 +15,10 @@
     'use strict';
 
     const writeSleep = 5000;
-    const dnaInfoCacheExpiry = 15552000000;
     const zeroSMatchesCacheExpiry = 604800000;
     const hasSMatchesCacheExpiry = 2592000000;
     const bulkOperationIntervalMilliseconds = 250;
-    const autoScrollIntervalMilliseconds = 5000;
+    const autoScrollIntervalMilliseconds = 3000;
     const initalFixupTimeout = 500;
     const fixupTimeout = 60000;//360000;
 
@@ -67,11 +66,13 @@
     if(document.querySelectorAll(".noMatchDisplay").length > 0) {
         console.log("Crappy Ancestry engineering means we need to restart.");
         setTimeout(function(){
-                window.location.search = window.location.search.concat(window.autoscroll ? "&autoscroll=true" : "");
+                if( null == document.evaluate("//match-entry-original//*[contains(., 'across ')]", document, null, XPathResult.ANY_TYPE, null ).iterateNext()) {
+                    window.location.search = window.location.search.concat(window.autoscroll ? "&autoscroll=true" : "");
+                }
             },
-            5000);
+            120000);
         }
-        var matches = document.querySelectorAll("match-list match-entry");
+        var matches = document.querySelectorAll("match-list match-entry-original");
         matches.forEach(function(i){processMatch(i, visual)});
 //        matches.forEach(function(i){processMatch(i, star)});
    }
@@ -104,7 +105,7 @@
         var hideSharedMatches = (window.smatchmin != null && (localStorage.getWithExpiry("asm:" + url) < window.smatchmin)) || (window.smatchmax != null && (localStorage.getWithExpiry("asm:" + url) > window.smatchmax));
         var sharedMatchesStyle = hideSharedMatches ? "style=\"color:#BBB\" " : "";
         if(hideSharedMatches && window.removesmatches){
-            var e = matchElement.closest("MATCH-ENTRY");
+            var e = matchElement.closest("MATCH-ENTRY-ORIGINAL");
             e.style.display = "none";
         } else {
             var cell = document.createElement("div");
@@ -119,16 +120,18 @@
         }
 
         var d = matchElement.querySelector(".sharedDnaText a");
-        if(!d.innerText.match("longest")){
+        if(!d.innerText.match("Timbered DNA")){
             url = window.location.origin + "/discoveryui-geneticfamilyservice/api/probability/" + myGuid + "/to/" + theirGuid + "/modal";
             var dna = localStorage.getWithExpiry("ard:" + url)
-            d.innerText = "Shared DNA: " + dna.dna + " cM over " + dna.segments + " segment" + (dna.segments > 1 ? "s" + ", longest: " + dna.longestSegment + " cM" : "") + (dna.tDNA != dna.dna ? ". Timbered DNA: " + dna.tDNA + " cM" : "");
+            d.innerText = "Shared DNA: " + dna.dna + " cM over " + dna.segments + " segment" + (dna.segments > 1 ? "s, longest: " + dna.longestSegment + " cM" : "") + (dna.tDNA != dna.dna ? ". Timbered DNA: " + dna.tDNA + " cM" : "");
         }
     }
 
     async function filterTags(url, matchElement, myGuid, theirGuid, test) {
-        var hide = (window.hideTags != null && matchElement.querySelectorAll(".additionalInfoCol .indicatorGroup[title=\"" + window.tagGroups[window.hideTags[0]].label + "\"]").length > 0);
-        var e = matchElement.closest("MATCH-ENTRY");
+        var hide = (window.hideTags != null && window.hideTags.some(function(elem,index,hideTags){
+            return matchElement.querySelectorAll(".additionalInfoCol .indicatorGroup[title=\"" + window.tagGroups[elem].label + "\"]").length > 0;
+        }));
+        var e = matchElement.closest("MATCH-ENTRY-ORIGINAL");
         if(hide){
             e.style.display = "none";
         } else {
@@ -139,7 +142,7 @@
     async function filterSMatches(url, matchElement, myGuid, theirGuid, test) {
         await getMatches(url, myGuid, theirGuid);
         var hideSharedMatches = (window.smatchmin != null && (localStorage.getWithExpiry("asm:" + url) < window.smatchmin)) || (window.smatchmax != null && (localStorage.getWithExpiry("asm:" + url) > window.smatchmax));
-        var e = matchElement.closest("MATCH-ENTRY");
+        var e = matchElement.closest("MATCH-ENTRY-ORIGINAL");
         if(hideSharedMatches){
             e.style.display = "none";
         } else {
@@ -236,7 +239,7 @@
         url = window.location.origin + "/discoveryui-geneticfamilyservice/api/probability/" + myGuid + "/to/" + theirGuid + "/modal";
         var backoff = 100;
         do {
-            //console.log("val:" + localStorage.getWithExpiry("asm:" + url));
+       //     console.log("val:" + localStorage.getWithExpiry("asm:" + url));
             //If the raw DNA figure is not in cache, grab and and shove it in
             if(null == localStorage.getWithExpiry("ard:" + url)){
                 await sleep(backoff);
@@ -262,7 +265,7 @@
     async function getMatches(url){
         var backoff = 100;
         do {
-            //console.log("val:" + localStorage.getWithExpiry("asm:" + url));
+     //       console.log("val:" + localStorage.getWithExpiry("asm:" + url));
             //If the shared match count is not in cache, grab and and shove it in
             if(null == localStorage.getWithExpiry("asm:" + url)){
                 await sleep(backoff);
@@ -321,7 +324,7 @@
 
     function processRawDNA(url, dnaPayload){
         const dnaData = { tDNA: dnaPayload.html.body.match("Shared DNA: <strong>(.*?) cM</strong> across <strong>.*? segments</strong>")[1], segments: dnaPayload.html.body.match("Shared DNA: <strong>.*? cM</strong> across <strong>(.*?) segments</strong>")[1], dna: dnaPayload.html.body.match("Unweighted shared DNA: <strong>(.*?) cM</strong>")[1], longestSegment: dnaPayload.html.body.match("Longest segment: <strong>(.*?) cM</strong>")[1] };
-        localStorage.setWithExpiry("ard:" + url, dnaData, dnaInfoCacheExpiry + dnaInfoCacheExpiry * Math.random());
+        localStorage.setWithExpiry("ard:" + url, dnaData, zeroSMatchesCacheExpiry + zeroSMatchesCacheExpiry * Math.random());
     }
 
 // Localstorage with expiry taken from https://www.sohamkamani.com/blog/javascript-localstorage-with-ttl-expiry/
@@ -444,7 +447,7 @@
 
     window.resetSMatch = function(){
         window.removesmatches = false;
-        var matches = document.querySelectorAll("match-list match-entry");
+        var matches = document.querySelectorAll("match-list match-entry-original");
         matches.forEach(function(i){if(i.style.display == "none") { i.style.display = "block"; } });
     }
 
@@ -453,7 +456,7 @@ console.log("filtering");
         window.removesmatches = true;
         window.smatchmin = parseInt(document.getElementById("smatchmin").value, 10);
         window.smatchmax = parseInt(document.getElementById("smatchmax").value, 10);
-        var matches = document.querySelectorAll("match-list match-entry");
+        var matches = document.querySelectorAll("match-list match-entry-original");
         matches.forEach(function(i){processMatch(i, filterSMatches, always, null)});
         toggleSMatchCallout();
         fixup();
@@ -511,7 +514,7 @@ console.log("filtering");
 
     window.resetNotTags = function(){
         window.hideTags = null;
-        var matches = document.querySelectorAll("match-list match-entry");
+        var matches = document.querySelectorAll("match-list match-entry-original");
         matches.forEach(function(i){if(i.style.display == "none") { i.style.display = "block"; } });
     }
 
@@ -520,7 +523,7 @@ console.log("filtering");
         window.hideTags = Object.entries(document.querySelectorAll("#filter_nottags_options .calloutMenuChecked")).map(function(i){return i[1].id.replace("tagNotFilterGroup","")});
         //window.smatchmin = parseInt(document.getElementById("smatchmin").value, 10);
         //window.smatchmax = parseInt(document.getElementById("smatchmax").value, 10);
-        var matches = document.querySelectorAll("match-list match-entry");
+        var matches = document.querySelectorAll("match-list match-entry-original");
         matches.forEach(function(i){processMatch(i, filterTags, always, null)});
         toggleNotTagsCallout();
     }
@@ -580,17 +583,9 @@ console.log("filtering");
 
     window.handleNotTagsFilter = function(e){
         var matches = document.querySelectorAll("#filter_nottags_options .tagGroup");
-        var wasSet = e.classList.contains("calloutMenuChecked");
-        matches.forEach(async function(i){
-            i.classList.remove("calloutMenuChecked");
-            i.classList.remove("iconAfterCheck");
-            i.classList.add("calloutMenuUnchecked");
-        });
-        if(!wasSet){
-           e.classList.remove("calloutMenuUnchecked");
-           e.classList.add("calloutMenuChecked");
-           e.classList.add("iconAfterCheck");
-        }
+        e.classList.toggle("calloutMenuUnchecked");
+        e.classList.toggle("calloutMenuChecked");
+        e.classList.toggle("iconAfterCheck");
     }
 
     const actionsStart = Date.now();
@@ -615,7 +610,7 @@ console.log("filtering");
     window.doBulkOperation = async function(element){
         if(!element.classList.contains("disabled")) {
             var mode = document.getElementById("bulkMatchesCallout").querySelector(".bulkMode.calloutMenuChecked").id.replace("bulkMode", "").toLowerCase();
-            var matches = document.querySelectorAll("match-list match-entry");
+            var matches = document.querySelectorAll("match-list match-entry-original");
             var group = document.getElementById("bulkMatchesCallout").querySelector(".bulkGroup.calloutMenuChecked");
             for(const i of matches){
                 processMatch(i, tagCore, always, mode, group.groupText ?? group.getAttribute("groupText"), group.groupId ?? group.getAttribute("groupId"));
@@ -758,8 +753,10 @@ console.log("filtering");
         } else {
             console.log("starting autoScroll");
             autoScrollInterval = setInterval(function(){
-                window.scrollTo(0,0);
-                window.scrollTo(0,999999999);
+                if( null == document.evaluate("//match-entry-original//*[contains(., 'across ')]", document, null, XPathResult.ANY_TYPE, null ).iterateNext()) {
+                    window.scrollTo(0,0);
+                    window.scrollTo(0,999999999);
+                }
             }, autoScrollIntervalMilliseconds);
             document.querySelector("autoscroll").classList.add("running");
             window.autoscroll = true;
@@ -830,7 +827,7 @@ autoscroll.running {
     // create an observer instance
     var observer = new MutationObserver(async function(mutations) {
         mutations.forEach(async function(mutation) {
-            if(mutation.target.nodeName == "MATCH-ENTRY"){
+            if(mutation.target.nodeName == "MATCH-ENTRY-ORIGINAL"){
                // console.debug(mutation.type + ":" + mutation.target.innerText);
                 await processMatch(mutation.target, visual)
                   //  .then(processMatch(mutation.target, filterSMatches));
