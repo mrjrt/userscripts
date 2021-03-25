@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
-// @version      0.11
+// @version      0.13
 // @updateURL    https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @description  Make Ancestry's DNA section less tedious
 // @author       Me.
@@ -36,7 +36,7 @@
 
     async function getGroups(){
         var backoff = 100;
-        do {
+        while(null == window.tagGroups) {
             var url = window.location.origin + "/discoveryui-matchesservice/api/samples/" + myGuid + "/tags";
             await sleep(backoff);
             if(null == window.tagGroups && myGuid != "<UNKNOWN>"){
@@ -58,7 +58,32 @@
                 }
             }
             backoff = backoff + Math.floor(Math.random() * backoff);
-        } while(null == window.tagGroups);
+        }
+    }
+
+    async function getMatchesGroups(matchGuid){
+        var backoff = 100;
+        var groups = null;
+        while(null == groups) {
+            var url = window.location.origin + "/discoveryui-matchesservice/api/samples/" + myGuid + "/matches/" + matchGuid + "/details";
+            await sleep(backoff);
+            if(null == groups){
+                var xmlhttp = new XMLHttpRequest();
+                xmlhttp.open("GET", url, false);
+                try{
+                    xmlhttp.send();
+                    if(xmlhttp.status == 200){
+                        groups = JSON.parse(xmlhttp.responseText).tags;
+                    } else {
+                        console.log(xmlhttp.status + "," + url)
+                    }
+                }catch( e) {
+                    console.log(e + url)
+                }
+            }
+            backoff = backoff + Math.floor(Math.random() * backoff);
+        }
+        return groups;
     }
 
     function fixup(){
@@ -66,14 +91,16 @@
     if(document.querySelectorAll(".noMatchDisplay").length > 0) {
         console.log("Crappy Ancestry engineering means we need to restart.");
         setTimeout(function(){
-                if( null == document.evaluate("//match-entry-original//*[contains(., 'across ')]", document, null, XPathResult.ANY_TYPE, null ).iterateNext()) {
+                if( null == document.evaluate("//match-entry-updated//*[contains(., 'across ')]", document, null, XPathResult.ANY_TYPE, null ).iterateNext()) {
                     window.location.search = window.location.search.concat(window.autoscroll ? "&autoscroll=true" : "");
                 }
             },
             120000);
         }
-        var matches = document.querySelectorAll("match-list match-entry-original");
+        var matches = document.querySelectorAll("match-list match-entry-updated");
         matches.forEach(function(i){processMatch(i, visual)});
+        matches.forEach(function(i){processMatch(i, removeStupidButton)});
+        matches.forEach(function(i){processMatch(i, showAllGroups)});
 //        matches.forEach(function(i){processMatch(i, star)});
    }
 
@@ -98,6 +125,30 @@
         doIt(url, matchElement, myGuid, theirGuid, test, mode, groupText, groupId);
     }
 
+    async function showAllGroups(url, matchElement, myGuid, theirGuid, test) {
+        matchElement.querySelectorAll("div.additionalInfoCol .displayTextNum").forEach(async function(d){
+            d.remove();
+
+            (await getMatchesGroups(theirGuid)).forEach(async function(group){
+                if(matchElement.querySelectorAll("span[title=\""+window.tagGroups[group].label+"\"]").length == 0){
+                matchElement.querySelectorAll("div.additionalInfoCol .indicatorGroupCollection").forEach(function(parent){
+                    var newIcon = document.createElement("span");
+                    newIcon.className = "indicatorGroup tight";
+                    newIcon.style.backgroundColor = window.tagGroups[group].color;
+                    newIcon.title = window.tagGroups[group].label;
+                    parent.insertBefore(newIcon, parent.querySelector(".indicatorGroup"));
+                });
+                }
+            });
+        });
+    }
+
+    async function removeStupidButton(url, matchElement, myGuid, theirGuid, test) {
+        matchElement.querySelectorAll("div.additionalInfoCol.sharedDnaStuff").forEach(function(d){
+            d.remove();
+        });
+    }
+
     async function visual(url, matchElement, myGuid, theirGuid, test) {
         await getMatches(url);
         await getRawDNA(url, myGuid, theirGuid);
@@ -105,33 +156,34 @@
         var hideSharedMatches = (window.smatchmin != null && (localStorage.getWithExpiry("asm:" + url) < window.smatchmin)) || (window.smatchmax != null && (localStorage.getWithExpiry("asm:" + url) > window.smatchmax));
         var sharedMatchesStyle = hideSharedMatches ? "style=\"color:#BBB\" " : "";
         if(hideSharedMatches && window.removesmatches){
-            var e = matchElement.closest("MATCH-ENTRY-ORIGINAL");
+            var e = matchElement.closest("MATCH-ENTRY-UPDATED");
             e.style.display = "none";
         } else {
             var cell = document.createElement("div");
-            cell.className = "additionalInfoCol ng-tns-c108-3 sharedmatches";
-            cell.innerHTML = "<a href=\"" + window.location.origin + "/discoveryui-matches/compare/" + myGuid + "/with/" + theirGuid + "/sharedmatches\"" + sharedMatchesStyle + ">" + localStorage.getWithExpiry("asm:" + url) + " shared matches</a>";
+            cell.className = "sharedmatches";
+            cell.innerHTML = "<a class=\"icon iconSmatch\" href=\"" + window.location.origin + "/discoveryui-matches/compare/" + myGuid + "/with/" + theirGuid + "/sharedmatches\"" + sharedMatchesStyle + ">" + localStorage.getWithExpiry("asm:" + url) + " shared matches</a>";
 
-            var parent = matchElement.querySelector(".matchGrid");
+            var parent = matchElement.querySelector(".treeInformation");
             var existing = parent.querySelector(".sharedmatches")
             if(!parent.querySelector(".sharedmatches")){
                 parent.appendChild(cell);
             }
         }
 
-        var d = matchElement.querySelector(".sharedDnaText a");
-        if(!d.innerText.match("Timbered DNA")){
-            url = window.location.origin + "/discoveryui-geneticfamilyservice/api/probability/" + myGuid + "/to/" + theirGuid + "/modal";
-            var dna = localStorage.getWithExpiry("ard:" + url)
-            d.innerText = "Shared DNA: " + dna.dna + " cM over " + dna.segments + " segment" + (dna.segments > 1 ? "s, longest: " + dna.longestSegment + " cM" : "") + (dna.tDNA != dna.dna ? ". Timbered DNA: " + dna.tDNA + " cM" : "");
-        }
+        matchElement.querySelectorAll(".sharedDnaText div.link, div.sharedDnaText.link").forEach(function(d){
+            if(!d.innerText.match("Timbered DNA")){
+                url = window.location.origin + "/discoveryui-geneticfamilyservice/api/probability/" + myGuid + "/to/" + theirGuid + "/modal";
+                var dna = localStorage.getWithExpiry("ard:" + url)
+                d.innerText = "Shared DNA: " + dna.dna + " cM over " + dna.segments + " segment" + (dna.segments > 1 ? "s, longest: " + dna.longestSegment + " cM" : "") + (dna.tDNA != dna.dna ? ". Timbered DNA: " + dna.tDNA + " cM" : "");
+            }
+        });
     }
 
     async function filterTags(url, matchElement, myGuid, theirGuid, test) {
         var hide = (window.hideTags != null && window.hideTags.some(function(elem,index,hideTags){
             return matchElement.querySelectorAll(".additionalInfoCol .indicatorGroup[title=\"" + window.tagGroups[elem].label + "\"]").length > 0;
         }));
-        var e = matchElement.closest("MATCH-ENTRY-ORIGINAL");
+        var e = matchElement.closest("MATCH-ENTRY-UPDATED");
         if(hide){
             e.style.display = "none";
         } else {
@@ -142,7 +194,7 @@
     async function filterSMatches(url, matchElement, myGuid, theirGuid, test) {
         await getMatches(url, myGuid, theirGuid);
         var hideSharedMatches = (window.smatchmin != null && (localStorage.getWithExpiry("asm:" + url) < window.smatchmin)) || (window.smatchmax != null && (localStorage.getWithExpiry("asm:" + url) > window.smatchmax));
-        var e = matchElement.closest("MATCH-ENTRY-ORIGINAL");
+        var e = matchElement.closest("MATCH-ENTRY-UPDATED");
         if(hideSharedMatches){
             e.style.display = "none";
         } else {
@@ -387,10 +439,32 @@
     // Prepare the table
     if(!document.getElementById("matchCssOverrides")){
         var styles = `
+.treeInformation .iconLeafEntry
+{
+    margin-bottom: initial !important
+}
+
+.iconPeople::before {
+	content: "\\E64A";
+	font-weight: bold;
+}
+
+.iconSmatch::before {
+	content: "\\2229";
+	font-family: 'Open Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+	font-size: x-large;
+	font-weight: bold;
+}
+
+.discoveryui-matches-app.panelOpen:not(.sidebarPush) .matchListColumnWrap:not(.panelOpen) .updatedLayout .matchGrid, .discoveryui-matches-app:not(.panelOpen) .updatedLayout .matchGrid
+{
+	grid-column-gap: 5px !important;
+}
+
 .discoveryui-matches-app.panelOpen:not(.sidebarPush) .matchListColumnWrap:not(.panelOpen) .matchGrid,
 .discoveryui-matches-app:not(.panelOpen) .matchGrid
 {
-    grid-template-columns: 5fr 6fr 4fr 5fr 1fr !important;
+    grid-template-columns: 6fr 5fr 4fr 5fr 1fr !important;
 }
 
 .smatchRangeWrapper
@@ -414,6 +488,13 @@
 
 #filter_nottags_options .calloutPointer{
     left: calc(20% - 16px)
+}
+
+.updatedLayout .matchGrid .notVisible {
+	height: initial !important;
+	line-height: initial !important;
+	border: initial !important;
+	visibility: initial !important;
 }
 `;
 
@@ -447,7 +528,7 @@
 
     window.resetSMatch = function(){
         window.removesmatches = false;
-        var matches = document.querySelectorAll("match-list match-entry-original");
+        var matches = document.querySelectorAll("match-list match-entry-updated");
         matches.forEach(function(i){if(i.style.display == "none") { i.style.display = "block"; } });
     }
 
@@ -456,7 +537,7 @@ console.log("filtering");
         window.removesmatches = true;
         window.smatchmin = parseInt(document.getElementById("smatchmin").value, 10);
         window.smatchmax = parseInt(document.getElementById("smatchmax").value, 10);
-        var matches = document.querySelectorAll("match-list match-entry-original");
+        var matches = document.querySelectorAll("match-list match-entry-updated");
         matches.forEach(function(i){processMatch(i, filterSMatches, always, null)});
         toggleSMatchCallout();
         fixup();
@@ -514,7 +595,7 @@ console.log("filtering");
 
     window.resetNotTags = function(){
         window.hideTags = null;
-        var matches = document.querySelectorAll("match-list match-entry-original");
+        var matches = document.querySelectorAll("match-list match-entry-updated");
         matches.forEach(function(i){if(i.style.display == "none") { i.style.display = "block"; } });
     }
 
@@ -523,7 +604,7 @@ console.log("filtering");
         window.hideTags = Object.entries(document.querySelectorAll("#filter_nottags_options .calloutMenuChecked")).map(function(i){return i[1].id.replace("tagNotFilterGroup","")});
         //window.smatchmin = parseInt(document.getElementById("smatchmin").value, 10);
         //window.smatchmax = parseInt(document.getElementById("smatchmax").value, 10);
-        var matches = document.querySelectorAll("match-list match-entry-original");
+        var matches = document.querySelectorAll("match-list match-entry-updated");
         matches.forEach(function(i){processMatch(i, filterTags, always, null)});
         toggleNotTagsCallout();
     }
@@ -610,7 +691,7 @@ console.log("filtering");
     window.doBulkOperation = async function(element){
         if(!element.classList.contains("disabled")) {
             var mode = document.getElementById("bulkMatchesCallout").querySelector(".bulkMode.calloutMenuChecked").id.replace("bulkMode", "").toLowerCase();
-            var matches = document.querySelectorAll("match-list match-entry-original");
+            var matches = document.querySelectorAll("match-list match-entry-updated");
             var group = document.getElementById("bulkMatchesCallout").querySelector(".bulkGroup.calloutMenuChecked");
             for(const i of matches){
                 processMatch(i, tagCore, always, mode, group.groupText ?? group.getAttribute("groupText"), group.groupId ?? group.getAttribute("groupId"));
@@ -753,7 +834,7 @@ console.log("filtering");
         } else {
             console.log("starting autoScroll");
             autoScrollInterval = setInterval(function(){
-                if( null == document.evaluate("//match-entry-original//*[contains(., 'across ')]", document, null, XPathResult.ANY_TYPE, null ).iterateNext()) {
+                if( null == document.evaluate("//match-entry-updated//*[contains(., '% shared DNA')]", document, null, XPathResult.ANY_TYPE, null ).iterateNext()) {
                     window.scrollTo(0,0);
                     window.scrollTo(0,999999999);
                 }
@@ -827,10 +908,12 @@ autoscroll.running {
     // create an observer instance
     var observer = new MutationObserver(async function(mutations) {
         mutations.forEach(async function(mutation) {
-            if(mutation.target.nodeName == "MATCH-ENTRY-ORIGINAL"){
+            if(mutation.target.nodeName == "MATCH-ENTRY-UPDATED"){
                // console.debug(mutation.type + ":" + mutation.target.innerText);
-                await processMatch(mutation.target, visual)
+                await processMatch(mutation.target, removeStupidButton)
+                    .then(processMatch(mutation.target, showAllGroups))
                   //  .then(processMatch(mutation.target, filterSMatches));
+                    .then(processMatch(mutation.target, visual))
                     .then(processMatch(mutation.target, filterTags));
                 //    .then(processMatch(mutation.target, star));
             }
