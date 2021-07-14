@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
-// @version      0.13
+// @version      0.14
 // @updateURL    https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @description  Make Ancestry's DNA section less tedious
 // @author       Me.
 // @include      *://*.ancestry.*/discoveryui-matches/match-list/*
-// @include      *://*.ancestry.*/discoveryui-matches/compare/*/sharedmatches
+// @include      *://*.ancestry.*/discoveryui-matches/compare/*/sharedmatches*
 // @include      file://*AncestryDNA® Matches*
 // @grant        none
 // ==/UserScript==
@@ -50,6 +50,13 @@
                             map[obj.tagId] = obj;
                             return map;
                         }, {});
+                        window.tagGroups[1] = {tagId: 1, label: "Viewed", color: "#1987ad"};
+                        //window.tagGroups[2] = {tagId: 2, label: "Flagged", color: "#FFFF00"};
+                        //window.tagGroups[3] = {tagId: 3, label: "Unknown 3", color: "#000000"};
+                        //window.tagGroups[4] = {tagId: 4, label: "Unknown 4", color: "#000000"};
+                        //window.tagGroups[5] = {tagId: 5, label: "Unknown 5", color: "#000000"};
+                        window.tagGroups[6] = {tagId: 6, label: "Father's side", color: "#ADD8E6"};
+                        window.tagGroups[7] = {tagId: 7, label: "Mother's side", color: "#FFB6C1"}
                     } else {
                         console.log(xmlhttp.status + "," + url)
                     }
@@ -170,7 +177,7 @@
             }
         }
 
-        matchElement.querySelectorAll(".sharedDnaText div.link, div.sharedDnaText.link").forEach(function(d){
+        matchElement.querySelectorAll(".sharedDnaText div.link, div.sharedDnaText.link, button.sharedDnaText").forEach(function(d){
             if(!d.innerText.match("Timbered DNA")){
                 url = window.location.origin + "/discoveryui-geneticfamilyservice/api/probability/" + myGuid + "/to/" + theirGuid + "/modal";
                 var dna = localStorage.getWithExpiry("ard:" + url)
@@ -210,8 +217,11 @@
             var groupCount = matchElement.querySelectorAll(".additionalInfoCol .indicatorGroup").length;
             var starCount = matchElement.querySelectorAll(".additionalInfoCol .iconStar").length;
             var hasStar = matchElement.querySelectorAll(".additionalInfoCol .iconStar").length > 0;
+            var hasFathersSide = Array.from(matchElement.querySelectorAll(".parentLineText")).filter(function(el){ return el.textContent.trim()=="Father's side" || el.textContent.trim()=="Both sides"}).length > 0;
+            var hasMothersSide = Array.from(matchElement.querySelectorAll(".parentLineText")).filter(function(el){ return el.textContent.trim()=="Mother's side" || el.textContent.trim()=="Both sides"}).length > 0;
+            var hasViewed = matchElement.querySelectorAll(".userCard .indicatorNew").length == 0; // "div.userCard div.badgeContainer div.indicatorNew"
             var hasSelectedGroup = matchElement.querySelectorAll(".additionalInfoCol .indicatorGroup[title=\"" + groupText + "\"]").length > 0;
-            var has = groupText == "Star" ? hasStar : hasSelectedGroup;
+            var has = (groupText == "Star" && hasStar) || (groupText == "Father's side" && hasFathersSide) || (groupText == "Mother's side" && hasMothersSide)|| (groupText == "Viewed" && hasViewed) || hasSelectedGroup;
             //console.log("cnt: " + groupCount + "," + starCount + "," + mode + ", " + group);
             console.log("group:" + groupText + ", mode:" + mode + ", has:" + has);
             //var actualMode = mode != "toggle" ? mode : (starCount == 0 ? "set" : "clear" );
@@ -243,31 +253,79 @@
                     xmlhttp.setRequestHeader("Content-Type", "application/json");
                     xmlhttp.onreadystatechange = function() {
                         if (this.status == 200) {
-                            var parent = matchElement.querySelector(".additionalInfoCol .ng-star-inserted .indicatorGroupCollection");
-                            if(actualMode == "set") {
-                                if(null == parent.querySelector(groupText == "Star"
-                                                                ? ".iconStar"
-                                                                : ".indicatorGroup[title=\"" + groupText + "\"]")) {
-                                    console.log(theirGuid + " successfully tagged as " + groupText);
-                                    var newIcon = document.createElement("span");
-                                    newIcon.className = groupText == "Star"
-                                        ? "icon iconStar"
-                                        : "indicatorGroup tight";
-                                    newIcon.style.backgroundColor = groupText == "Star"
-                                        ? null
-                                        : window.tagGroups[groupId].color;
-                                    newIcon.title = groupText == "Star"
-                                        ? "Starred matches"
-                                        : groupText;
-                                    parent.insertBefore(newIcon, parent.querySelector(".indicatorGroupCollection .indicatorGroup"));
+                            var parent = null;
+                            if(groupText == "Father's side" || groupText == "Mother's side") {
+                                // Fix up parent text
+                                parent = matchElement.querySelectorAll(".parentLineText");
+                                if(actualMode == "set") {
+                                    if("Both sides" != (parent[0]?.textContent ?? "").trim() && (parent[0]?.textContent ?? "").trim() != groupText) {
+                                        var text = ((hasFathersSide && groupText == "Mother's side") || (hasMothersSide && groupText == "Father's side"))
+                                            ? "Both sides"
+                                            : groupText;
+
+                                        if(parent[1]) {
+                                            parent[1].remove();
+                                        }
+
+                                        if(parent[0]) {
+                                            parent[0].remove();
+                                        }
+
+                                        var newDiv = document.createElement("div");
+                                        newDiv.className = "parentLineText";
+                                        newDiv.innerText = text;
+                                        matchElement.querySelector(".standardParentLine").appendChild(newDiv);
+                                    }
+                                } else {
+                                    if(parent[1] ?? parent[0]) {
+                                        (parent[1] ?? parent[0]).innerText = (hasFathersSide && groupText == "Mother's side")
+                                            ? "Father's side"
+                                        : (hasMothersSide && groupText == "Father's side")
+                                            ? "Mother's side"
+                                        : "";
+                                        if("" == (parent[1] ?? parent[0]).innerText.trim()) {
+                                            (parent[1] ?? parent[0]).remove();
+                                        }
+                                    }
                                 }
                             } else {
-                                //console.log(parent.querySelector(".iconStar"));
-                                var qs = parent.querySelector(groupText == "Star"
-                                                                ? ".iconStar"
-                                                                : ".indicatorGroup[title=\"" + groupText + "\"]");
-                                if(null != qs) {
-                                    qs.remove();
+                                // Fix up group indicators
+                                parent = matchElement.querySelector(groupText == "Viewed" ? ".userCard" : ".additionalInfoCol .ng-star-inserted .indicatorGroupCollection");
+                                if(actualMode == "set" && groupText != "Viewed" || actualMode == "clear" && groupText == "Viewed" ) {
+                                    if(null == parent.querySelector(groupText == "Star"
+                                                                    ? ".iconStar"
+                                                                    : groupText == "Viewed"
+                                                                        ? ".indicatorNew"
+                                                                        : ".indicatorGroup[title=\"" + groupText + "\"]")) {
+                                        console.log(theirGuid + " successfully tagged as " + groupText);
+                                        var newIcon = document.createElement(groupText == "Viewed" ? "div" : "span");
+                                        newIcon.className = groupText == "Star"
+                                            ? "icon iconStar"
+                                            : groupText == "Viewed" ? "indicatorNew" : "indicatorGroup tight";
+                                        newIcon.style.backgroundColor = groupText == "Star" || groupText == "Viewed"
+                                            ? null
+                                            : window.tagGroups[groupId].color;
+                                        newIcon.title = groupText == "Star"
+                                            ? "Starred matches"
+                                            : groupText == "Viewed"
+                                                ? null
+                                                : groupText;
+                                        parent.insertBefore(newIcon, parent.querySelector(
+                                            groupText == "Viewed"
+                                                ? ".userCardContent"
+                                                : ".indicatorGroupCollection .indicatorGroup"));
+                                    }
+                                } else {
+                                    //console.log(parent.querySelector(".iconStar"));
+                                    var qs = parent.querySelector(
+                                        groupText == "Star"
+                                            ? ".iconStar"
+                                            : groupText == "Viewed"
+                                                ? ".indicatorNew"
+                                                : ".indicatorGroup[title=\"" + groupText + "\"]");
+                                    if(null != qs) {
+                                        qs.remove();
+                                    }
                                 }
                             }
                         } else if(this.status >= 400 && this.status < 600 ){
