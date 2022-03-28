@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
-// @version      0.14
+// @version      0.16
 // @updateURL    https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @description  Make Ancestry's DNA section less tedious
 // @author       Me.
@@ -98,13 +98,13 @@
     if(document.querySelectorAll(".noMatchDisplay").length > 0) {
         console.log("Crappy Ancestry engineering means we need to restart.");
         setTimeout(function(){
-                if( null == document.evaluate("//match-entry-updated//*[contains(., 'across ')]", document, null, XPathResult.ANY_TYPE, null ).iterateNext()) {
+                if( null == document.evaluate("(//match-entry//* | //match-entry-updated//*)[contains(., 'across ')]", document, null, XPathResult.ANY_TYPE, null ).iterateNext()) {
                     window.location.search = window.location.search.concat(window.autoscroll ? "&autoscroll=true" : "");
                 }
             },
             120000);
         }
-        var matches = document.querySelectorAll("match-list match-entry-updated");
+        var matches = document.querySelectorAll("match-list match-entry, match-list match-entry-updated");
         matches.forEach(function(i){processMatch(i, visual)});
         matches.forEach(function(i){processMatch(i, removeStupidButton)});
         matches.forEach(function(i){processMatch(i, showAllGroups)});
@@ -154,6 +154,10 @@
         matchElement.querySelectorAll("div.additionalInfoCol.sharedDnaStuff").forEach(function(d){
             d.remove();
         });
+
+        matchElement.querySelectorAll("div.additionalInfoCol.groupAreaDesktopStuff").forEach(function(d){
+            if(d.classList.contains("notVisible")) d.classList.remove("notVisible");
+        });
     }
 
     async function visual(url, matchElement, myGuid, theirGuid, test) {
@@ -163,7 +167,7 @@
         var hideSharedMatches = (window.smatchmin != null && (localStorage.getWithExpiry("asm:" + url) < window.smatchmin)) || (window.smatchmax != null && (localStorage.getWithExpiry("asm:" + url) > window.smatchmax));
         var sharedMatchesStyle = hideSharedMatches ? "style=\"color:#BBB\" " : "";
         if(hideSharedMatches && window.removesmatches){
-            var e = matchElement.closest("MATCH-ENTRY-UPDATED");
+            var e = matchElement.closest("MATCH-ENTRY,MATCH-ENTRY-UPDATED");
             e.style.display = "none";
         } else {
             var cell = document.createElement("div");
@@ -188,9 +192,13 @@
 
     async function filterTags(url, matchElement, myGuid, theirGuid, test) {
         var hide = (window.hideTags != null && window.hideTags.some(function(elem,index,hideTags){
-            return matchElement.querySelectorAll(".additionalInfoCol .indicatorGroup[title=\"" + window.tagGroups[elem].label + "\"]").length > 0;
+            return false ||
+                (window.hideTags.includes("6") && Array.from(matchElement.querySelectorAll(".parentLineText")).filter(function(el){ return el.textContent.trim()=="Father's side" || el.textContent.trim()=="Both sides"}).length > 0) ||
+                (window.hideTags.includes("7") && Array.from(matchElement.querySelectorAll(".parentLineText")).filter(function(el){ return el.textContent.trim()=="Mother's side" || el.textContent.trim()=="Both sides"}).length > 0) ||
+                (window.hideTags.includes("1") && matchElement.querySelectorAll(".userCard .indicatorNew").length == 0) ||
+                matchElement.querySelectorAll(".additionalInfoCol .indicatorGroup[title=\"" + window.tagGroups[elem].label + "\"]").length > 0;
         }));
-        var e = matchElement.closest("MATCH-ENTRY-UPDATED");
+        var e = matchElement.closest("MATCH-ENTRY,MATCH-ENTRY-UPDATED");
         if(hide){
             e.style.display = "none";
         } else {
@@ -201,7 +209,7 @@
     async function filterSMatches(url, matchElement, myGuid, theirGuid, test) {
         await getMatches(url, myGuid, theirGuid);
         var hideSharedMatches = (window.smatchmin != null && (localStorage.getWithExpiry("asm:" + url) < window.smatchmin)) || (window.smatchmax != null && (localStorage.getWithExpiry("asm:" + url) > window.smatchmax));
-        var e = matchElement.closest("MATCH-ENTRY-UPDATED");
+        var e = matchElement.closest("MATCH-ENTRY,MATCH-ENTRY-UPDATED");
         if(hideSharedMatches){
             e.style.display = "none";
         } else {
@@ -433,7 +441,7 @@
     }
 
     function processRawDNA(url, dnaPayload){
-        const dnaData = { tDNA: dnaPayload.html.body.match("Shared DNA: <strong>(.*?) cM</strong> across <strong>.*? segments</strong>")[1], segments: dnaPayload.html.body.match("Shared DNA: <strong>.*? cM</strong> across <strong>(.*?) segments</strong>")[1], dna: dnaPayload.html.body.match("Unweighted shared DNA: <strong>(.*?) cM</strong>")[1], longestSegment: dnaPayload.html.body.match("Longest segment: <strong>(.*?) cM</strong>")[1] };
+        const dnaData = { tDNA: dnaPayload.html.body.match("shared DNA \\| <strong>(.*?) cM</strong> across <strong>.*? segments</strong>")[1], segments: dnaPayload.html.body.match("<strong>.*? cM</strong> across <strong>(.*?) segments</strong>")[1], dna: dnaPayload.html.body.match("Unweighted shared DNA: <strong>(.*?) cM</strong>")[1], longestSegment: dnaPayload.html.body.match("Longest segment: <strong>(.*?) cM</strong>")[1] };
         localStorage.setWithExpiry("ard:" + url, dnaData, zeroSMatchesCacheExpiry + zeroSMatchesCacheExpiry * Math.random());
     }
 
@@ -586,7 +594,7 @@
 
     window.resetSMatch = function(){
         window.removesmatches = false;
-        var matches = document.querySelectorAll("match-list match-entry-updated");
+        var matches = document.querySelectorAll("match-list match-entry,match-list match-entry-updated");
         matches.forEach(function(i){if(i.style.display == "none") { i.style.display = "block"; } });
     }
 
@@ -595,7 +603,7 @@ console.log("filtering");
         window.removesmatches = true;
         window.smatchmin = parseInt(document.getElementById("smatchmin").value, 10);
         window.smatchmax = parseInt(document.getElementById("smatchmax").value, 10);
-        var matches = document.querySelectorAll("match-list match-entry-updated");
+        var matches = document.querySelectorAll("match-list match-entry,match-list match-entry-updated");
         matches.forEach(function(i){processMatch(i, filterSMatches, always, null)});
         toggleSMatchCallout();
         fixup();
@@ -653,7 +661,7 @@ console.log("filtering");
 
     window.resetNotTags = function(){
         window.hideTags = null;
-        var matches = document.querySelectorAll("match-list match-entry-updated");
+        var matches = document.querySelectorAll("match-list match-entry,match-list match-entry-updated");
         matches.forEach(function(i){if(i.style.display == "none") { i.style.display = "block"; } });
     }
 
@@ -662,7 +670,7 @@ console.log("filtering");
         window.hideTags = Object.entries(document.querySelectorAll("#filter_nottags_options .calloutMenuChecked")).map(function(i){return i[1].id.replace("tagNotFilterGroup","")});
         //window.smatchmin = parseInt(document.getElementById("smatchmin").value, 10);
         //window.smatchmax = parseInt(document.getElementById("smatchmax").value, 10);
-        var matches = document.querySelectorAll("match-list match-entry-updated");
+        var matches = document.querySelectorAll("match-list match-entry,match-list match-entry-updated");
         matches.forEach(function(i){processMatch(i, filterTags, always, null)});
         toggleNotTagsCallout();
     }
@@ -749,7 +757,7 @@ console.log("filtering");
     window.doBulkOperation = async function(element){
         if(!element.classList.contains("disabled")) {
             var mode = document.getElementById("bulkMatchesCallout").querySelector(".bulkMode.calloutMenuChecked").id.replace("bulkMode", "").toLowerCase();
-            var matches = document.querySelectorAll("match-list match-entry-updated");
+            var matches = document.querySelectorAll("match-list match-entry,match-list match-entry-updated");
             var group = document.getElementById("bulkMatchesCallout").querySelector(".bulkGroup.calloutMenuChecked");
             for(const i of matches){
                 processMatch(i, tagCore, always, mode, group.groupText ?? group.getAttribute("groupText"), group.groupId ?? group.getAttribute("groupId"));
@@ -892,7 +900,7 @@ console.log("filtering");
         } else {
             console.log("starting autoScroll");
             autoScrollInterval = setInterval(function(){
-                if( null == document.evaluate("//match-entry-updated//*[contains(., '% shared DNA')]", document, null, XPathResult.ANY_TYPE, null ).iterateNext()) {
+                if( null == document.evaluate("(//match-entry//div | //match-entry-updated//div)[contains(@class, 'relationshipCol')]//*[contains(., '% shared DNA')]", document, null, XPathResult.ANY_TYPE, null ).iterateNext()) {
                     window.scrollTo(0,0);
                     window.scrollTo(0,999999999);
                 }
@@ -966,7 +974,7 @@ autoscroll.running {
     // create an observer instance
     var observer = new MutationObserver(async function(mutations) {
         mutations.forEach(async function(mutation) {
-            if(mutation.target.nodeName == "MATCH-ENTRY-UPDATED"){
+            if(mutation.target.nodeName == "MATCH-ENTRY" || mutation.target.nodeName == "MATCH-ENTRY-UPDATED"){
                // console.debug(mutation.type + ":" + mutation.target.innerText);
                 await processMatch(mutation.target, removeStupidButton)
                     .then(processMatch(mutation.target, showAllGroups))
