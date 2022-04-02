@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
-// @version      0.16
+// @version      0.16.1
 // @updateURL    https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @description  Make Ancestry's DNA section less tedious
 // @author       Me.
@@ -441,7 +441,7 @@
     }
 
     function processRawDNA(url, dnaPayload){
-        const dnaData = { tDNA: dnaPayload.html.body.match("shared DNA \\| <strong>(.*?) cM</strong> across <strong>.*? segments</strong>")[1], segments: dnaPayload.html.body.match("<strong>.*? cM</strong> across <strong>(.*?) segments</strong>")[1], dna: dnaPayload.html.body.match("Unweighted shared DNA: <strong>(.*?) cM</strong>")[1], longestSegment: dnaPayload.html.body.match("Longest segment: <strong>(.*?) cM</strong>")[1] };
+        const dnaData = { tDNA: dnaPayload.html.body.match("[Ss]hared DNA[:|( \\|)] <strong>(.*?) cM</strong> across <strong>.*? segments</strong>")[1], segments: dnaPayload.html.body.match("<strong>.*? cM</strong> across <strong>(.*?) segments</strong>")[1], dna: dnaPayload.html.body.match("Unweighted shared DNA: <strong>(.*?) cM</strong>")[1], longestSegment: dnaPayload.html.body.match("Longest segment: <strong>(.*?) cM</strong>")[1] };
         localStorage.setWithExpiry("ard:" + url, dnaData, zeroSMatchesCacheExpiry + zeroSMatchesCacheExpiry * Math.random());
     }
 
