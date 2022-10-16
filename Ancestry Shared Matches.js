@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
-// @version      0.19
+// @version      0.20
 // @updateURL    https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @downloadURL  https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @description  Make Ancestry's DNA section less tedious
@@ -115,10 +115,12 @@
             120000);
         }
         var matches = document.querySelectorAll("match-list match-entry, match-list match-entry-updated");
-        matches.forEach(function(i){processMatch(i, visual)});
-        matches.forEach(function(i){processMatch(i, removeStupidButton)});
-        matches.forEach(function(i){processMatch(i, showAllGroups)});
-//        matches.forEach(function(i){processMatch(i, star)});
+        matches.forEach(function(i){
+            processMatch(i, visual);
+            processMatch(i, removeStupidButton);
+            processMatch(i, showAllGroups);
+            //processMatch(i, star);
+        });
    }
 
     async function always(url, smatchmin, smatchmax) {
@@ -200,16 +202,27 @@
         });
     }
 
+    async function resetDisplay(url, matchElement, myGuid, theirGuid, test) {
+        var e = matchElement.closest("MATCH-ENTRY,MATCH-ENTRY-UPDATED");
+        e.style.displayCount = 0;
+    }
+
     async function filterTags(url, matchElement, myGuid, theirGuid, test) {
         var hide = (window.hideTags != null && window.hideTags.some(function(elem,index,hideTags){
             return false ||
-                (window.hideTags.includes("6") && Array.from(matchElement.querySelectorAll(".parentLineText")).filter(function(el){ return el.textContent.trim()=="Father's side" || el.textContent.trim()=="Both sides"}).length > 0) ||
-                (window.hideTags.includes("7") && Array.from(matchElement.querySelectorAll(".parentLineText")).filter(function(el){ return el.textContent.trim()=="Mother's side" || el.textContent.trim()=="Both sides"}).length > 0) ||
+                (window.hideTags.includes("6") && Array.from(matchElement.querySelectorAll(".parentLineText")).filter(function(el){ return el.textContent.trim()=="Paternal side" || el.textContent.trim()=="Both sides"}).length > 0) ||
+                (window.hideTags.includes("7") && Array.from(matchElement.querySelectorAll(".parentLineText")).filter(function(el){ return el.textContent.trim()=="Maternal side" || el.textContent.trim()=="Both sides"}).length > 0) ||
                 (window.hideTags.includes("1") && matchElement.querySelectorAll(".userCard .indicatorNew").length == 0) ||
                 matchElement.querySelectorAll(".additionalInfoCol .indicatorGroup[title=\"" + window.tagGroups[elem].label + "\"]").length > 0;
         }));
         var e = matchElement.closest("MATCH-ENTRY,MATCH-ENTRY-UPDATED");
         if(hide){
+            e.style.displayCount -= 1;
+        } else {
+            e.style.displayCount += 1;
+        }
+
+        if(e.style.displayCount <= 0){
             e.style.display = "none";
         } else {
             e.style.display = "block";
@@ -218,9 +231,15 @@
 
     async function filterSMatches(url, matchElement, myGuid, theirGuid, test) {
         await getMatches(url, myGuid, theirGuid);
-        var hideSharedMatches = (window.smatchmin != null && (localStorage.getWithExpiry("asm:" + url) < window.smatchmin)) || (window.smatchmax != null && (localStorage.getWithExpiry("asm:" + url) > window.smatchmax));
+        var hide = (window.smatchmin != null && (localStorage.getWithExpiry("asm:" + url) < window.smatchmin)) || (window.smatchmax != null && (localStorage.getWithExpiry("asm:" + url) > window.smatchmax));
         var e = matchElement.closest("MATCH-ENTRY,MATCH-ENTRY-UPDATED");
-        if(hideSharedMatches){
+        if(hide){
+            e.style.displayCount -= 1;
+        } else {
+            e.style.displayCount += 1;
+        }
+
+        if(e.style.displayCount <= 0){
             e.style.display = "none";
         } else {
             e.style.display = "block";
@@ -604,8 +623,16 @@
 
     window.resetSMatch = function(){
         window.removesmatches = false;
+        window.smatchmin = null;
+        window.smatchmax = null;
         var matches = document.querySelectorAll("match-list match-entry,match-list match-entry-updated");
-        matches.forEach(function(i){if(i.style.display == "none") { i.style.display = "block"; } });
+        matches.forEach(function(i){
+            processMatch(i, resetDisplay, always, null);
+            processMatch(i, filterTags, always, null);
+            processMatch(i, filterSMatches, always, null);
+        });
+        toggleSMatchCallout();
+        fixup();
     }
 
     window.filterSMatches = function(){
@@ -614,7 +641,11 @@ console.log("filtering");
         window.smatchmin = parseInt(document.getElementById("smatchmin").value, 10);
         window.smatchmax = parseInt(document.getElementById("smatchmax").value, 10);
         var matches = document.querySelectorAll("match-list match-entry,match-list match-entry-updated");
-        matches.forEach(function(i){processMatch(i, filterSMatches, always, null)});
+        matches.forEach(function(i){
+            processMatch(i, resetDisplay, always, null);
+            processMatch(i, filterTags, always, null);
+            processMatch(i, filterSMatches, always, null);
+        });
         toggleSMatchCallout();
         fixup();
     }
@@ -672,16 +703,22 @@ console.log("filtering");
     window.resetNotTags = function(){
         window.hideTags = null;
         var matches = document.querySelectorAll("match-list match-entry,match-list match-entry-updated");
-        matches.forEach(function(i){if(i.style.display == "none") { i.style.display = "block"; } });
+        matches.forEach(function(i){
+            processMatch(i, resetDisplay, always, null);
+            processMatch(i, filterTags, always, null);
+            processMatch(i, filterSMatches, always, null);
+        });
     }
 
     window.filterNotTags = function(){
 console.log("filtering");
         window.hideTags = Object.entries(document.querySelectorAll("#filter_nottags_options .calloutMenuChecked")).map(function(i){return i[1].id.replace("tagNotFilterGroup","")});
-        //window.smatchmin = parseInt(document.getElementById("smatchmin").value, 10);
-        //window.smatchmax = parseInt(document.getElementById("smatchmax").value, 10);
         var matches = document.querySelectorAll("match-list match-entry,match-list match-entry-updated");
-        matches.forEach(function(i){processMatch(i, filterTags, always, null)});
+        matches.forEach(function(i){
+            processMatch(i, resetDisplay, always, null);
+            processMatch(i, filterTags, always, null);
+            processMatch(i, filterSMatches, always, null);
+        });
         toggleNotTagsCallout();
     }
 
@@ -988,9 +1025,10 @@ autoscroll.running {
                // console.debug(mutation.type + ":" + mutation.target.innerText);
                 await processMatch(mutation.target, removeStupidButton)
                     .then(processMatch(mutation.target, showAllGroups))
-                  //  .then(processMatch(mutation.target, filterSMatches));
                     .then(processMatch(mutation.target, visual))
-                    .then(processMatch(mutation.target, filterTags));
+                    .then(processMatch(mutation.target, resetDisplay))
+                    .then(processMatch(mutation.target, filterTags))
+                    .then(processMatch(mutation.target, filterSMatches));
                 //    .then(processMatch(mutation.target, star));
             }
         });
