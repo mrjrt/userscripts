@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
-// @version      0.18
+// @version      0.19
 // @updateURL    https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @downloadURL  https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @description  Make Ancestry's DNA section less tedious
@@ -33,7 +33,6 @@
     const fixupTimeout = 60000;//360000;
 
     var myGuid = "<UNKNOWN>";
-    debugger;
     var rx = /(discoveryui-matches\/list|match-list|compare)\/(.+?)(\/|$)/;
     myGuid = rx.exec(window.location.pathname)[2];
 
