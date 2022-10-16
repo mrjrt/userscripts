@@ -1,13 +1,23 @@
 // ==UserScript==
 // @name         Ancestry Shared Matches
 // @namespace    http://qwerki.co.uk/
-// @version      0.16.1
+// @version      0.18
 // @updateURL    https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
+// @downloadURL  https://raw.githubusercontent.com/mrjrt/userscripts/master/Ancestry%20Shared%20Matches.js
 // @description  Make Ancestry's DNA section less tedious
 // @author       Me.
-// @include      *://*.ancestry.*/discoveryui-matches/match-list/*
-// @include      *://*.ancestry.*/discoveryui-matches/compare/*/sharedmatches*
-// @include      file://*AncestryDNA® Matches*
+// @match        *://*.ancestry.com/discoveryui-matches/match-list/*
+// @match        *://*.ancestry.co.uk/discoveryui-matches/match-list/*
+// @match        *://*.ancestry.com.au/discoveryui-matches/match-list/*
+// @match        *://*.ancestry.ca/discoveryui-matches/match-list/*
+// @match        *://*.ancestry.com/discoveryui-matches/list/*
+// @match        *://*.ancestry.co.uk/discoveryui-matches/list/*
+// @match        *://*.ancestry.com.au/discoveryui-matches/list/*
+// @match        *://*.ancestry.ca/discoveryui-matches/list/*
+// @match        *://*.ancestry.com/discoveryui-matches/compare/*/sharedmatches*
+// @match        *://*.ancestry.co.uk/discoveryui-matches/compare/*/sharedmatches*
+// @match        *://*.ancestry.com.au/discoveryui-matches/compare/*/sharedmatches*
+// @match        *://*.ancestry.ca/discoveryui-matches/compare/*/sharedmatches*
 // @grant        none
 // ==/UserScript==
 
@@ -23,7 +33,8 @@
     const fixupTimeout = 60000;//360000;
 
     var myGuid = "<UNKNOWN>";
-    var rx = /(match-list|compare)\/(.+?)(\/|$)/;
+    debugger;
+    var rx = /(discoveryui-matches\/list|match-list|compare)\/(.+?)(\/|$)/;
     myGuid = rx.exec(window.location.pathname)[2];
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -32,7 +43,7 @@
     window.autoscroll = urlParams.get('autoscroll') ?? false;
     window.removesmatches = urlParams.get('removesmatches') ?? false;
 
-    console.log(smatchmin + ", " + smatchmax + ", " + window.removesmatches + ", " + window.autoscroll);
+    console.log(window.smatchmin + ", " + window.smatchmax + ", " + window.removesmatches + ", " + window.autoscroll);
 
     async function getGroups(){
         var backoff = 100;
